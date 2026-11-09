@@ -63,7 +63,7 @@ const config: ExpoConfig = {
     supabaseAnonKey: SUPABASE_ANON_KEY,
     apiBaseUrl: API_BASE_URL,
     // Filled in by `npx eas-cli init`; push tokens need it.
-    eas: { projectId: process.env.EAS_PROJECT_ID },
+    eas: { projectId: "7530bb93-22d0-41ab-9365-0d988827b9e3" },
   },
 };
 
