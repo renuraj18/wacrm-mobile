@@ -240,8 +240,8 @@ export default function Chat() {
       />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 8}
       >
         {loading ? (
           <ActivityIndicator style={styles.loader} color={theme.primary} />

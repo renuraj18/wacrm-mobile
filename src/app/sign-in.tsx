@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { supabase } from "@/lib/supabase";
@@ -25,7 +25,7 @@ export default function SignIn() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.bg }]}>
-      <KeyboardAvoidingView style={[styles.flex, styles.center]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={[styles.flex, styles.center]} behavior="padding">
         <View style={styles.card}>
           <View style={[styles.logo, { backgroundColor: theme.primary }]}>
             <Text style={styles.logoText}>S</Text>
