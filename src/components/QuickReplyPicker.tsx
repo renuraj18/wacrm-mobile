@@ -1,162 +1,95 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text } from "react-native";
 
-import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/lib/theme";
+import type { InteractivePayload } from "@/lib/types";
 
 import { SheetModal } from "./SheetModal";
 
-interface QuickReply {
+/** Row shape of the CRM's `quick_replies` table (wacrm migration 035). */
+export interface QuickReply {
   id: string;
   title: string;
-  body: string;
+  kind: "text" | "interactive";
+  content_text: string | null;
+  interactive_payload: InteractivePayload | null;
 }
 
+/**
+ * Quick replies managed in the CRM (Settings) and shared by the whole
+ * account. Read-only here: text replies are inserted into the composer,
+ * interactive replies are sent as they are.
+ */
 export function QuickReplyPicker({
   visible,
   onClose,
-  onSelect,
+  onSelectText,
+  onSelectInteractive,
 }: {
   visible: boolean;
   onClose: () => void;
-  onSelect: (body: string) => void;
+  onSelectText: (body: string) => void;
+  onSelectInteractive: (payload: InteractivePayload) => void;
 }) {
   const theme = useTheme();
-  const { session } = useAuth();
-  const storageKey = `wacrm.quick-replies.${session?.user.id ?? "signed-out"}`;
   const [replies, setReplies] = useState<QuickReply[]>([]);
   const [loading, setLoading] = useState(true);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
-    void AsyncStorage.getItem(storageKey)
-      .then((saved) => {
-        if (!saved) {
-          if (!cancelled) setReplies([]);
-          return;
-        }
-        const parsed: unknown = JSON.parse(saved);
-        if (
-          !Array.isArray(parsed) ||
-          !parsed.every(
-            (item) =>
-              item &&
-              typeof item.id === "string" &&
-              typeof item.title === "string" &&
-              typeof item.body === "string",
-          )
-        ) {
-          throw new Error("Saved quick replies have an invalid format.");
-        }
-        if (!cancelled) setReplies(parsed as QuickReply[]);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) Alert.alert("Quick replies", error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+    supabase
+      .from("quick_replies")
+      .select("id, title, kind, content_text, interactive_payload")
+      .order("title", { ascending: true })
+      .then(({ data, error: err }) => {
+        if (cancelled) return;
+        if (err) setError(err.message);
+        else setReplies((data as QuickReply[]) ?? []);
+        setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [storageKey, visible]);
+  }, [visible]);
 
-  const addReply = async () => {
-    const cleanTitle = title.trim();
-    const cleanBody = body.trim();
-    if (!cleanTitle || !cleanBody) return;
-    const next = [...replies, { id: `${Date.now()}`, title: cleanTitle, body: cleanBody }];
-    setSaving(true);
-    try {
-      await AsyncStorage.setItem(storageKey, JSON.stringify(next));
-      setReplies(next);
-      setTitle("");
-      setBody("");
-    } catch (error) {
-      Alert.alert("Couldn't save quick reply", error instanceof Error ? error.message : String(error));
-    } finally {
-      setSaving(false);
-    }
+  const choose = (r: QuickReply) => {
+    if (r.kind === "interactive" && r.interactive_payload) onSelectInteractive(r.interactive_payload);
+    else if (r.content_text) onSelectText(r.content_text);
+    onClose();
   };
-
-  const removeReply = (reply: QuickReply) => {
-    Alert.alert("Delete quick reply?", reply.title, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          const next = replies.filter((item) => item.id !== reply.id);
-          void AsyncStorage.setItem(storageKey, JSON.stringify(next))
-            .then(() => setReplies(next))
-            .catch((error: unknown) =>
-              Alert.alert("Couldn't delete quick reply", error instanceof Error ? error.message : String(error)),
-            );
-        },
-      },
-    ]);
-  };
-
-  const inputStyle = [styles.input, { backgroundColor: theme.surface, color: theme.text }];
 
   return (
     <SheetModal visible={visible} title="Quick replies" onClose={onClose}>
       {loading ? (
-        <ActivityIndicator style={styles.center} color={theme.primary} />
+        <ActivityIndicator style={styles.msg} color={theme.primary} />
       ) : (
         <FlatList
           data={replies}
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Text style={[styles.center, { color: theme.muted }]}>No quick replies saved on this device.</Text>}
-          renderItem={({ item }) => (
-            <View style={[styles.replyRow, { borderBottomColor: theme.border }]}>
-              <Pressable style={styles.replyBody} onPress={() => onSelect(item.body)}>
-                <Text style={{ color: theme.text, fontWeight: "600" }}>{item.title}</Text>
-                <Text style={{ color: theme.muted }} numberOfLines={2}>{item.body}</Text>
-              </Pressable>
-              <Pressable onPress={() => removeReply(item)} hitSlop={8} accessibilityLabel={`Delete ${item.title}`}>
-                <Text style={{ color: theme.danger }}>Delete</Text>
-              </Pressable>
-            </View>
-          )}
-          ListFooterComponent={
-            <View style={styles.form}>
-              <Text style={[styles.formTitle, { color: theme.text }]}>Add a quick reply</Text>
-              <TextInput
-                style={inputStyle}
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Shortcut name"
-                placeholderTextColor={theme.muted}
-                maxLength={60}
-              />
-              <TextInput
-                style={[inputStyle, styles.bodyInput]}
-                value={body}
-                onChangeText={setBody}
-                placeholder="Reply text"
-                placeholderTextColor={theme.muted}
-                multiline
-                maxLength={4096}
-              />
-              <Pressable
-                onPress={() => void addReply()}
-                disabled={saving || !title.trim() || !body.trim()}
-                style={[styles.addButton, { backgroundColor: theme.primary, opacity: saving || !title.trim() || !body.trim() ? 0.5 : 1 }]}
-              >
-                <Text style={styles.addButtonText}>{saving ? "Saving…" : "Save quick reply"}</Text>
-              </Pressable>
-              <Text style={{ color: theme.muted, fontSize: 12, textAlign: "center" }}>
-                Quick replies are stored only on this device.
-              </Text>
-            </View>
+          keyExtractor={(r) => r.id}
+          ListEmptyComponent={
+            <Text style={[styles.msg, { color: theme.muted }]}>
+              {error ?? "No quick replies yet. Add them in the CRM under Settings."}
+            </Text>
           }
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [styles.row, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surface }]}
+              onPress={() => choose(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Use quick reply ${item.title}`}
+            >
+              <Text style={{ color: theme.text, fontWeight: "600" }}>
+                {item.kind === "interactive" ? "🔘 " : "⚡ "}
+                {item.title}
+              </Text>
+              <Text style={{ color: theme.muted, fontSize: 13 }} numberOfLines={2}>
+                {item.kind === "interactive" ? item.interactive_payload?.body : item.content_text}
+              </Text>
+            </Pressable>
+          )}
         />
       )}
     </SheetModal>
@@ -164,13 +97,6 @@ export function QuickReplyPicker({
 }
 
 const styles = StyleSheet.create({
-  center: { textAlign: "center", margin: 20 },
-  replyRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderBottomWidth: StyleSheet.hairlineWidth },
-  replyBody: { flex: 1, gap: 4 },
-  form: { padding: 16, gap: 10 },
-  formTitle: { fontSize: 16, fontWeight: "700" },
-  input: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
-  bodyInput: { minHeight: 88, textAlignVertical: "top" },
-  addButton: { borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  addButtonText: { color: "#fff", fontWeight: "600" },
+  msg: { textAlign: "center", margin: 20 },
+  row: { padding: 16, gap: 4, borderBottomWidth: StyleSheet.hairlineWidth },
 });

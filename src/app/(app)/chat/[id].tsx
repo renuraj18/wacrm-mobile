@@ -46,7 +46,7 @@ import { sessionWindow } from "@/lib/session-window";
 import { supabase } from "@/lib/supabase";
 import { renderTemplateBody, templateHeaderMediaUrl } from "@/lib/templates";
 import { useTheme } from "@/lib/theme";
-import type { Conversation, Message, MessageReaction, MessageTemplate } from "@/lib/types";
+import type { Conversation, InteractivePayload, Message, MessageReaction, MessageTemplate } from "@/lib/types";
 
 const PAGE = 50;
 
@@ -251,6 +251,12 @@ export default function Chat() {
       content_text: text,
       ...(replyTo ? { reply_to_message_id: replyTo.id } : {}),
     });
+
+  const onSendInteractive = (payload: InteractivePayload) =>
+    sendWith(
+      temp({ content_type: "interactive", content_text: payload.body, interactive_payload: payload }),
+      { message_type: "interactive", interactive_payload: payload },
+    );
 
   const onSendMedia = (m: MediaSend) =>
     sendWith(temp({ content_type: m.kind, content_text: m.caption, media_url: m.mediaUrl, ...takeReply() }), {
@@ -470,6 +476,7 @@ export default function Chat() {
               onSendText={onSendText}
               onSendMedia={onSendMedia}
               onSendTemplate={onSendTemplate}
+              onSendInteractive={onSendInteractive}
               replyTo={replyTo ? { message: replyTo, peerName: name } : null}
               onCancelReply={() => setReplyTo(null)}
             />

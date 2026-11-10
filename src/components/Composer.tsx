@@ -15,7 +15,7 @@ import { api, ApiError } from "@/lib/api";
 import { MEDIA_MAX_BYTES_BY_KIND, mimeForFile } from "@/lib/media-path";
 import { productCaption } from "@/lib/products";
 import { useTheme } from "@/lib/theme";
-import type { Message, MessageTemplate, ProductListItem } from "@/lib/types";
+import type { InteractivePayload, Message, MessageTemplate, ProductListItem } from "@/lib/types";
 import { uploadChatMedia } from "@/lib/upload";
 
 import { AttachSheet, type AttachKind } from "./AttachSheet";
@@ -40,6 +40,7 @@ interface Props {
   onSendText: (text: string) => void;
   onSendMedia: (m: MediaSend) => void;
   onSendTemplate: (t: MessageTemplate, v: TemplateValues) => void;
+  onSendInteractive: (payload: InteractivePayload) => void;
   /** Message being replied to (shown above the input), if any. */
   replyTo: { message: Message; peerName: string } | null;
   onCancelReply: () => void;
@@ -101,6 +102,7 @@ function ActiveComposer({
   onSendText,
   onSendMedia,
   onSendTemplate,
+  onSendInteractive,
   replyTo,
   onCancelReply,
 }: Props) {
@@ -437,10 +439,8 @@ function ActiveComposer({
         <QuickReplyPicker
           visible
           onClose={() => setQuickRepliesOpen(false)}
-          onSelect={(reply) => {
-            setText((current) => (current ? `${current}\n${reply}` : reply));
-            setQuickRepliesOpen(false);
-          }}
+          onSelectText={(reply) => setText((current) => (current ? `${current}\n${reply}` : reply))}
+          onSelectInteractive={onSendInteractive}
         />
       )}
       <ProductPicker visible={productsOpen} onClose={() => setProductsOpen(false)} onPick={pickProduct} />
