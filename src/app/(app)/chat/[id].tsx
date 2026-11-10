@@ -398,8 +398,10 @@ export default function Chat() {
       />
       {/* react-native-keyboard-controller works on both platforms even with
           Android edge-to-edge (the default in SDK 58), where the RN
-          KeyboardAvoidingView and softwareKeyboardLayoutMode "resize" don't. */}
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+          KeyboardAvoidingView and softwareKeyboardLayoutMode "resize" don't.
+          automaticOffset measures the view's place under the Stack header,
+          so the keyboard overlap is computed in window coordinates. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
         {loading ? (
           <ActivityIndicator style={styles.loader} color={theme.primary} />
         ) : (
