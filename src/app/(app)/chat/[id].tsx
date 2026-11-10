@@ -4,9 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Linking,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +12,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChatHeaderTitle } from "@/components/ChatHeaderTitle";
@@ -391,17 +390,18 @@ export default function Chat() {
           ),
         }}
       />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
-      >
+      {/* react-native-keyboard-controller works on both platforms even with
+          Android edge-to-edge (the default in SDK 58), where the RN
+          KeyboardAvoidingView and softwareKeyboardLayoutMode "resize" don't. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {loading ? (
           <ActivityIndicator style={styles.loader} color={theme.primary} />
         ) : (
           <FlatList
             ref={listRef}
             inverted
+            // Shorter glide after a fling, closer to WhatsApp's chat scroll.
+            decelerationRate={0.985}
             data={rows}
             keyExtractor={(r) => (r.type === "msg" ? r.m.id : r.key)}
             renderItem={({ item }) =>
