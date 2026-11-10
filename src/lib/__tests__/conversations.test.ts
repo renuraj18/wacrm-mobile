@@ -16,11 +16,13 @@ describe("applyInboxFilter", () => {
     conv("b", { assigned_agent_id: "me", last_message_text: "Is the saree available?" }),
     conv("c", { assigned_agent_id: "other" }),
     conv("d", { status: "pending" }),
+    conv("e", { status: "closed" }),
   ];
   it("filters unread and mine", () => {
     expect(applyInboxFilter(list, "unread", "me", "").map((c) => c.id)).toEqual(["a"]);
     expect(applyInboxFilter(list, "mine", "me", "").map((c) => c.id)).toEqual(["b"]);
     expect(applyInboxFilter(list, "pending", "me", "").map((c) => c.id)).toEqual(["d"]);
+    expect(applyInboxFilter(list, "closed", "me", "").map((c) => c.id)).toEqual(["e"]);
     expect(applyInboxFilter(list, "mine", null, "")).toEqual([]);
   });
   it("searches name, phone and last message", () => {

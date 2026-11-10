@@ -7,15 +7,15 @@ export default function AppLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: theme.surface },
-        headerTintColor: theme.text,
+        headerStyle: { backgroundColor: theme.header },
+        headerTintColor: theme.headerText,
         contentStyle: { backgroundColor: theme.bg },
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Inbox" }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="chat/[id]" options={{ title: "" }} />
       <Stack.Screen name="contact/[id]" options={{ title: "Contact", presentation: "modal" }} />
-      <Stack.Screen name="settings" options={{ title: "Settings" }} />
+      <Stack.Screen name="new-chat" options={{ title: "New chat" }} />
     </Stack>
   );
 }

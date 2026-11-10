@@ -25,7 +25,7 @@ The app uses native modules (audio, secure store, notifications) so it does **no
 
 ## Architecture
 
-- **Routing**: expo-router under `src/app/`. `_layout.tsx` uses `Stack.Protected` guards on `session` to switch between `sign-in` and the `(app)` group (inbox `index`, `chat/[id]`, `contact/[id]`, `settings`). Typed routes are enabled. Path alias `@/` → `src/`.
+- **Routing**: expo-router under `src/app/`. `_layout.tsx` uses `Stack.Protected` guards on `session` to switch between `sign-in` and the `(app)` group: a `(tabs)` bottom-tab shell (Chats `index`, `contacts`, `settings`; each tab draws its own `ScreenHeader`) plus stack screens `chat/[id]`, `contact/[id]` and `new-chat`. Theme (`lib/theme.tsx`) is a provider with a persisted System/Light/Dark mode; shared UI primitives live in `src/components/ui/`. Typed routes are enabled. Path alias `@/` → `src/`.
 - **Config**: `app.config.ts` is dynamic; public Supabase URL, anon key and CRM API URL live in `extra` (read via `src/lib/config.ts`). No secrets belong here. The EAS project id comes from `EAS_PROJECT_ID` or `extra.eas.projectId` (push tokens need it).
 - **Two backends, one identity**: the Supabase session (email/password, persisted via chunked `expo-secure-store` in `lib/secure-storage.ts`) is used two ways:
   1. *Reads* go straight to Supabase (`lib/supabase.ts`); RLS scopes everything to the member's account.

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Composer, type MediaSend } from "@/components/Composer";
 import { MessageBubble } from "@/components/MessageBubble";
+import { Icon } from "@/components/ui/Icon";
 import type { TemplateValues } from "@/components/TemplatePicker";
 import { useRealtime } from "@/hooks/use-realtime";
 import { api } from "@/lib/api";
@@ -264,7 +265,7 @@ export default function Chat() {
               onPress={() => router.push({ pathname: "/contact/[id]", params: { id: id! } })}
               accessibilityLabel="Contact details"
             >
-              <Text style={{ color: theme.primary, fontSize: 16 }}>Info</Text>
+              <Icon name="information-circle-outline" size={26} color={theme.headerText} />
             </Pressable>
           ),
         }}
