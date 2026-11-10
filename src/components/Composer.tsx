@@ -15,7 +15,7 @@ import { api, ApiError } from "@/lib/api";
 import { MEDIA_MAX_BYTES_BY_KIND, mimeForFile } from "@/lib/media-path";
 import { productCaption } from "@/lib/products";
 import { useTheme } from "@/lib/theme";
-import type { MessageTemplate, ProductListItem } from "@/lib/types";
+import type { InteractivePayload, MessageTemplate, ProductListItem } from "@/lib/types";
 import { uploadChatMedia } from "@/lib/upload";
 
 import { ProductPicker } from "./ProductPicker";
@@ -37,6 +37,7 @@ interface Props {
   onSendText: (text: string) => void;
   onSendMedia: (m: MediaSend) => void;
   onSendTemplate: (t: MessageTemplate, v: TemplateValues) => void;
+  onSendInteractive: (payload: InteractivePayload) => void;
 }
 
 const MIN_RECORDING_MS = 800;
@@ -55,6 +56,7 @@ export function Composer({
   onSendText,
   onSendMedia,
   onSendTemplate,
+  onSendInteractive,
 }: Props) {
   const theme = useTheme();
   const [text, setText] = useState("");
@@ -350,10 +352,8 @@ export function Composer({
         <QuickReplyPicker
           visible
           onClose={() => setQuickRepliesOpen(false)}
-          onSelect={(reply) => {
-            setText((current) => (current ? `${current}\n${reply}` : reply));
-            setQuickRepliesOpen(false);
-          }}
+          onSelectText={(reply) => setText((current) => (current ? `${current}\n${reply}` : reply))}
+          onSelectInteractive={onSendInteractive}
         />
       )}
       <ProductPicker visible={productsOpen} onClose={() => setProductsOpen(false)} onPick={pickProduct} />

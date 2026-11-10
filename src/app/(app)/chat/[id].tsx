@@ -26,7 +26,7 @@ import { sessionWindow } from "@/lib/session-window";
 import { supabase } from "@/lib/supabase";
 import { renderTemplateBody, templateHeaderMediaUrl } from "@/lib/templates";
 import { useTheme } from "@/lib/theme";
-import type { Conversation, Message, MessageTemplate } from "@/lib/types";
+import type { Conversation, InteractivePayload, Message, MessageTemplate } from "@/lib/types";
 
 const PAGE = 50;
 
@@ -237,6 +237,12 @@ export default function Chat() {
     [id],
   );
 
+  const onSendInteractive = (payload: InteractivePayload) =>
+    sendWith(
+      temp({ content_type: "interactive", content_text: payload.body, interactive_payload: payload }),
+      { message_type: "interactive", interactive_payload: payload },
+    );
+
   // Inverted list: newest first, with a day separator after each day's block.
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
@@ -324,6 +330,7 @@ export default function Chat() {
               onSendText={onSendText}
               onSendMedia={onSendMedia}
               onSendTemplate={onSendTemplate}
+              onSendInteractive={onSendInteractive}
             />
           )}
         </View>
