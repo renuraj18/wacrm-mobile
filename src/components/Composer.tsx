@@ -1,3 +1,4 @@
+import * as DocumentPicker from "expo-document-picker";
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -18,13 +19,12 @@ import type { MessageTemplate, ProductListItem } from "@/lib/types";
 import { uploadChatMedia } from "@/lib/upload";
 
 import { ProductPicker } from "./ProductPicker";
+import { QuickReplyPicker } from "./QuickReplyPicker";
 import { TemplatePicker, type TemplateValues } from "./TemplatePicker";
 
 export interface MediaSend {
-  kind: "image" | "audio";
+  kind: "image" | "audio" | "video" | "document";
   mediaUrl: string;
-  /** Storage path, "" for external URLs (Shopify CDN). */
-  path: string;
   caption?: string;
 }
 
@@ -61,7 +61,13 @@ export function Composer({
   const [busy, setBusy] = useState<string | null>(null);
   const [productsOpen, setProductsOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [staged, setStaged] = useState<{ uri: string; name: string; mime: string } | null>(null);
+  const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
+  const [staged, setStaged] = useState<{
+    uri: string;
+    name: string;
+    mime: string;
+    kind: "image" | "video" | "document";
+  } | null>(null);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 200);
@@ -112,23 +118,66 @@ export function Composer({
     const res = source === "camera" ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
     if (res.canceled || !res.assets[0]) return;
     const a = res.assets[0];
-    if (a.fileSize && a.fileSize > MEDIA_MAX_BYTES_BY_KIND.image) {
-      Alert.alert("Photo too large", "WhatsApp allows photos up to 5 MB.");
-      return;
-    }
     // HEIC isn't accepted by WhatsApp or the bucket; the picker's
     // compression (quality < 1) re-encodes to JPEG on iOS.
-    const name = a.fileName?.replace(/\.(heic|heif)$/i, ".jpg") || `photo-${Date.now()}.jpg`;
+    const name = a.fileName?.replace(/\.(heic|heif)$/i, ".jpg") || "photo.jpg";
     const mime = a.mimeType && a.mimeType !== "image/heic" ? a.mimeType : mimeForFile(name, "image/jpeg");
-    setStaged({ uri: a.uri, name, mime });
+    stageMedia({ uri: a.uri, name, mime, kind: "image", size: a.fileSize });
+  };
+
+  const stageMedia = (file: {
+    uri: string;
+    name: string;
+    mime: string;
+    kind: "image" | "video" | "document";
+    size?: number | null;
+  }) => {
+    const maxBytes = MEDIA_MAX_BYTES_BY_KIND[file.kind];
+    if (file.size && file.size > maxBytes) {
+      Alert.alert("File too large", `This ${file.kind} must be ${Math.floor(maxBytes / (1024 * 1024))} MB or smaller.`);
+      return;
+    }
+    setStaged({ uri: file.uri, name: file.name, mime: file.mime, kind: file.kind });
+  };
+
+  const pickVideo = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Allow photo and video access in Settings to send videos.");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["videos"], quality: 1 });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    const name = asset.fileName || `video-${Date.now()}.mp4`;
+    stageMedia({
+      uri: asset.uri,
+      name,
+      mime: asset.mimeType || mimeForFile(name, "video/mp4"),
+      kind: "video",
+      size: asset.fileSize,
+    });
+  };
+
+  const pickDocument = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    stageMedia({
+      uri: asset.uri,
+      name: asset.name,
+      mime: asset.mimeType || mimeForFile(asset.name),
+      kind: "document",
+      size: asset.size,
+    });
   };
 
   const sendStaged = async () => {
     if (!staged || !accountId) return;
     setBusy("upload");
     try {
-      const { publicUrl, path } = await uploadChatMedia(accountId, staged.uri, staged.name, staged.mime);
-      onSendMedia({ kind: "image", mediaUrl: publicUrl, path, caption: text.trim() || undefined });
+      const { publicUrl } = await uploadChatMedia(accountId, staged.uri, staged.name, staged.mime);
+      onSendMedia({ kind: staged.kind, mediaUrl: publicUrl, caption: text.trim() || undefined });
       setStaged(null);
       setText("");
     } catch (e) {
@@ -139,18 +188,20 @@ export function Composer({
   };
 
   const openAttach = () => {
-    const options = ["Camera", "Photo library", "Shopify product", "Template", "Cancel"];
+    const options = ["Camera", "Photo library", "Video", "Document", "Shopify product", "Template", "Cancel"];
     const run = (i: number) => {
       if (i === 0) void pickImage("camera");
       if (i === 1) void pickImage("library");
-      if (i === 2) setProductsOpen(true);
-      if (i === 3) setTemplatesOpen(true);
+      if (i === 2) void pickVideo();
+      if (i === 3) void pickDocument();
+      if (i === 4) setProductsOpen(true);
+      if (i === 5) setTemplatesOpen(true);
     };
     if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions({ options, cancelButtonIndex: 4 }, run);
+      ActionSheetIOS.showActionSheetWithOptions({ options, cancelButtonIndex: 6 }, run);
     } else {
       Alert.alert("Attach", undefined, [
-        ...options.slice(0, 4).map((o, i) => ({ text: o, onPress: () => run(i) })),
+        ...options.slice(0, 6).map((o, i) => ({ text: o, onPress: () => run(i) })),
         { text: "Cancel", style: "cancel" as const },
       ]);
     }
@@ -159,7 +210,7 @@ export function Composer({
   const pickProduct = (p: ProductListItem) => {
     setProductsOpen(false);
     const caption = productCaption(p);
-    if (p.image_url) onSendMedia({ kind: "image", mediaUrl: p.image_url, path: "", caption });
+    if (p.image_url) onSendMedia({ kind: "image", mediaUrl: p.image_url, caption });
     else onSendText(caption);
   };
 
@@ -196,8 +247,8 @@ export function Composer({
     if (cancel || !uri || duration < MIN_RECORDING_MS || !accountId) return;
     setBusy("upload");
     try {
-      const { publicUrl, path } = await uploadChatMedia(accountId, uri, `voice-${Date.now()}.m4a`, "audio/mp4");
-      onSendMedia({ kind: "audio", mediaUrl: publicUrl, path });
+      const { publicUrl } = await uploadChatMedia(accountId, uri, `voice-${Date.now()}.m4a`, "audio/mp4");
+      onSendMedia({ kind: "audio", mediaUrl: publicUrl });
     } catch (e) {
       alertError("Voice note upload failed", e);
     } finally {
@@ -235,7 +286,7 @@ export function Composer({
       {staged && (
         <View style={[styles.staged, { backgroundColor: theme.bg }]}>
           <Text style={{ color: theme.text, flex: 1 }} numberOfLines={1}>
-            📷 {staged.name}
+            {staged.kind === "image" ? "📷" : staged.kind === "video" ? "🎥" : "📄"} {staged.name}
           </Text>
           <Pressable onPress={() => setStaged(null)} hitSlop={8}>
             <Text style={{ color: theme.danger }}>Remove</Text>
@@ -243,6 +294,14 @@ export function Composer({
         </View>
       )}
       <View style={styles.row}>
+        <Pressable
+          onPress={() => setQuickRepliesOpen(true)}
+          style={styles.icon}
+          hitSlop={6}
+          accessibilityLabel="Quick replies"
+        >
+          <Text style={[styles.quickReplyIcon, { color: theme.primary }]}>⚡</Text>
+        </Pressable>
         <Pressable onPress={openAttach} style={styles.icon} hitSlop={6} accessibilityLabel="Attach" disabled={recording}>
           <Text style={[styles.iconText, { color: theme.muted }]}>＋</Text>
         </Pressable>
@@ -287,15 +346,27 @@ export function Composer({
           </Pressable>
         )}
       </View>
+      {quickRepliesOpen && (
+        <QuickReplyPicker
+          visible
+          onClose={() => setQuickRepliesOpen(false)}
+          onSelect={(reply) => {
+            setText((current) => (current ? `${current}\n${reply}` : reply));
+            setQuickRepliesOpen(false);
+          }}
+        />
+      )}
       <ProductPicker visible={productsOpen} onClose={() => setProductsOpen(false)} onPick={pickProduct} />
-      <TemplatePicker
-        visible={templatesOpen}
-        onClose={() => setTemplatesOpen(false)}
-        onSend={(t, v) => {
-          setTemplatesOpen(false);
-          onSendTemplate(t, v);
-        }}
-      />
+      {templatesOpen && (
+        <TemplatePicker
+          visible
+          onClose={() => setTemplatesOpen(false)}
+          onSend={(t, v) => {
+            setTemplatesOpen(false);
+            onSendTemplate(t, v);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -306,6 +377,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-end", gap: 6 },
   icon: { width: 36, height: 40, alignItems: "center", justifyContent: "center" },
   iconText: { fontSize: 26 },
+  quickReplyIcon: { fontSize: 20 },
   ai: { fontSize: 15, fontWeight: "800" },
   input: { flex: 1, borderRadius: 20, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, fontSize: 16, maxHeight: 140, minHeight: 40 },
   recBox: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

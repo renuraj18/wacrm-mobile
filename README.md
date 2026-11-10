@@ -92,12 +92,18 @@ You need an Apple Developer account ($99/year). Then either:
 
 ## Features (v1)
 
-- Inbox: All / Mine / Unread, search (name, phone, last message), unread badges, pull to refresh, realtime
-- Chat: text, image (tap to zoom), voice note player, product captions, templates and interactive messages (read only), delivery ticks, load earlier, marks read when opened
-- Composer: text, camera or gallery photo with caption, hold the mic to record a voice note (AAC/M4A, release to send), Shopify product picker (photo + caption, same format as the web), AI draft
+- Inbox: All / Mine / Unread / Pending, search (name, phone, last message), unread badges, pull to refresh, realtime
+- Chat: text, image (tap to zoom), video and document attachments, voice note player, product captions, templates and interactive messages (read only), delivery ticks, retry failed text/media sends, load earlier, marks read when opened
+- Composer: text, camera or gallery photo/video and document attachments, hold the mic to record a voice note (AAC/M4A, release to send), device-local quick replies, Shopify product picker (photo + caption, same format as the web), AI draft
 - 24-hour window: once it closes, the composer switches to approved templates only (same rule as the web)
-- Contact: name, phone, email, company, tags, assignee; assign to me / unassign; close / reopen
+- Contact: name, phone, email, company, tags, assign to any account teammate; set open / pending / closed status
+- Templates: search approved templates and keep device-local favorites
 - Viewers (`account_role = viewer`) get a read-only composer
 - Settings: notifications on/off, sign out
 
-Not in v1 (use the web): reactions, reply-to quoting when sending, documents and video upload, interactive builder, quick replies, templates with URL-button variables.
+Mobile quick replies and template favorites are stored on the current device and are not shared with teammates.
+Document attachments are limited to 25 MB because the current storage upload buffers files in memory.
+
+Not available without additional CRM backend support: shared quick replies, reply-to quoting when sending,
+internal notes and mentions, interactive-message responses, template URL-button variables, and WhatsApp
+phone-number/quality/limit health dashboards.

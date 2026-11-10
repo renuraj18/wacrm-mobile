@@ -28,6 +28,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: "com.shanthiboutique.wacrm",
+    softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
@@ -35,6 +36,7 @@ const config: ExpoConfig = {
     },
     permissions: ["CAMERA", "RECORD_AUDIO", "POST_NOTIFICATIONS"],
   },
+  androidStatusBar: { translucent: false },
   web: { favicon: "./assets/favicon.png" },
   plugins: [
     "expo-router",

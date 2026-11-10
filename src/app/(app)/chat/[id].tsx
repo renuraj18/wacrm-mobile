@@ -26,7 +26,6 @@ import { supabase } from "@/lib/supabase";
 import { renderTemplateBody, templateHeaderMediaUrl } from "@/lib/templates";
 import { useTheme } from "@/lib/theme";
 import type { Conversation, Message, MessageTemplate } from "@/lib/types";
-import { deleteChatMedia } from "@/lib/upload";
 
 const PAGE = 50;
 
@@ -151,14 +150,13 @@ export default function Chat() {
 
   // ---- Sending — same bodies as wacrm message-thread.tsx -------------
   const sendWith = useCallback(
-    async (optimistic: Message, body: Record<string, unknown>, cleanupPath?: string) => {
+    async (optimistic: Message, body: Record<string, unknown>) => {
       setMessages((prev) => [...prev, optimistic]);
       try {
         const res = await api("/api/whatsapp/send", { method: "POST", body: { conversation_id: id, ...body } });
         setMessages((prev) => applyMessageUpdate(prev, optimistic.id, confirmedSendUpdate(res)));
       } catch (e) {
         setMessages((prev) => applyMessageUpdate(prev, optimistic.id, { status: "failed" }));
-        if (cleanupPath) deleteChatMedia(cleanupPath);
         Alert.alert("Message not sent", e instanceof Error ? e.message : String(e));
       }
     },
@@ -182,7 +180,6 @@ export default function Chat() {
     sendWith(
       temp({ content_type: m.kind, content_text: m.caption, media_url: m.mediaUrl }),
       { message_type: m.kind, media_url: m.mediaUrl, content_text: m.caption },
-      m.path,
     );
 
   const onSendTemplate = (t: MessageTemplate, v: TemplateValues) => {
@@ -204,6 +201,40 @@ export default function Chat() {
       },
     );
   };
+
+  const retryFailed = useCallback(
+    async (message: Message) => {
+      if (message.status !== "failed") return;
+      let body: Record<string, unknown>;
+      if (message.content_type === "text" && message.content_text) {
+        body = { message_type: "text", content_text: message.content_text };
+      } else if (
+        (message.content_type === "image" ||
+          message.content_type === "audio" ||
+          message.content_type === "video" ||
+          message.content_type === "document") &&
+        message.media_url
+      ) {
+        body = {
+          message_type: message.content_type,
+          media_url: message.media_url,
+          content_text: message.content_text,
+        };
+      } else {
+        return;
+      }
+
+      setMessages((prev) => applyMessageUpdate(prev, message.id, { status: "sending" }));
+      try {
+        const res = await api("/api/whatsapp/send", { method: "POST", body: { conversation_id: id, ...body } });
+        setMessages((prev) => applyMessageUpdate(prev, message.id, confirmedSendUpdate(res)));
+      } catch (e) {
+        setMessages((prev) => applyMessageUpdate(prev, message.id, { status: "failed" }));
+        Alert.alert("Message not sent", e instanceof Error ? e.message : String(e));
+      }
+    },
+    [id],
+  );
 
   // Inverted list: newest first, with a day separator after each day's block.
   const rows = useMemo<Row[]>(() => {
@@ -259,6 +290,7 @@ export default function Chat() {
                 <MessageBubble
                   message={item.m}
                   quoted={item.m.reply_to_message_id ? byId.get(item.m.reply_to_message_id) : null}
+                  onRetry={retryFailed}
                 />
               )
             }

@@ -24,13 +24,28 @@ function Ticks({ status }: { status: Message["status"] }) {
   }
 }
 
-function MessageBubbleInner({ message, quoted }: { message: Message; quoted?: Message | null }) {
+function MessageBubbleInner({
+  message,
+  quoted,
+  onRetry,
+}: {
+  message: Message;
+  quoted?: Message | null;
+  onRetry?: (message: Message) => void;
+}) {
   const theme = useTheme();
   const [zoom, setZoom] = useState(false);
   const outgoing = message.sender_type !== "customer";
   const text = message.content_text?.trim() ?? "";
   const media = message.media_url;
   const payload = message.interactive_payload;
+  const retryable =
+    (message.content_type === "text" && !!text) ||
+    ((message.content_type === "image" ||
+      message.content_type === "audio" ||
+      message.content_type === "video" ||
+      message.content_type === "document") &&
+      !!media);
 
   const body = (() => {
     switch (message.content_type) {
@@ -122,6 +137,11 @@ function MessageBubbleInner({ message, quoted }: { message: Message; quoted?: Me
         </View>
         {message.status === "failed" && (message.error_title || message.error_details) && (
           <Text style={{ color: theme.danger, fontSize: 12 }}>{message.error_details || message.error_title}</Text>
+        )}
+        {message.status === "failed" && retryable && onRetry && (
+          <Pressable onPress={() => onRetry(message)} accessibilityRole="button">
+            <Text style={{ color: theme.danger, fontSize: 13, fontWeight: "600" }}>Retry send</Text>
+          </Pressable>
         )}
       </View>
       {media && message.content_type === "image" && (

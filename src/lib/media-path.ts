@@ -5,6 +5,9 @@ export const CHAT_MEDIA_BUCKET = "chat-media";
 export const MEDIA_MAX_BYTES_BY_KIND = {
   image: 5 * 1024 * 1024,
   audio: 16 * 1024 * 1024,
+  video: 16 * 1024 * 1024,
+  // Upload currently buffers files in memory; keep document uploads mobile-safe.
+  document: 25 * 1024 * 1024,
 } as const;
 
 /**
@@ -41,12 +44,19 @@ export function mimeForFile(fileName: string, fallback = "application/octet-stre
     case "webp":
       return "image/webp";
     case "m4a":
-    case "mp4":
       return "audio/mp4";
+    case "mp4":
+      return "video/mp4";
     case "aac":
       return "audio/aac";
     case "ogg":
       return "audio/ogg";
+    case "pdf":
+      return "application/pdf";
+    case "doc":
+      return "application/msword";
+    case "docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     default:
       return fallback;
   }

@@ -14,6 +14,7 @@ const FILTERS: { value: InboxFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "mine", label: "Mine" },
   { value: "unread", label: "Unread" },
+  { value: "pending", label: "Pending" },
 ];
 
 export default function Inbox() {
