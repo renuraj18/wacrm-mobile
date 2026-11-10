@@ -1,17 +1,18 @@
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useNotificationTap } from "@/hooks/use-notification-tap";
 import { InboxRoot } from "@/lib/inbox-store";
 import { registerForPush } from "@/lib/push";
-import { useTheme } from "@/lib/theme";
+import { ThemeProvider, useThemeState } from "@/lib/theme";
 
 function RootStack() {
   const { session, loading } = useAuth();
-  const theme = useTheme();
+  const { theme, isDark } = useThemeState();
   const signedIn = !!session;
 
   // Register this phone for push on every signed-in launch (server upserts).
@@ -30,32 +31,39 @@ function RootStack() {
   if (loading) return null;
 
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: theme.surface },
-        headerTintColor: theme.text,
-        contentStyle: { backgroundColor: theme.bg },
-      }}
-    >
-      <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="(app)" options={{ headerShown: false }} />
-      </Stack.Protected>
-      <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="sign-in" options={{ headerShown: false }} />
-      </Stack.Protected>
-    </Stack>
+    <>
+      {/* Signed in: the green/charcoal app bar always wants light icons. */}
+      <StatusBar style={signedIn || isDark ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: theme.header },
+          headerTintColor: theme.headerText,
+          contentStyle: { backgroundColor: theme.bg },
+        }}
+      >
+        <Stack.Protected guard={signedIn}>
+          <Stack.Screen name="(app)" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+        </Stack.Protected>
+      </Stack>
+    </>
   );
 }
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <InboxRoot>
-          <StatusBar style="auto" />
-          <RootStack />
-        </InboxRoot>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <InboxRoot>
+              <RootStack />
+            </InboxRoot>
+          </AuthProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

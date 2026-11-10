@@ -20,7 +20,7 @@ export function normalizeConversation(raw: RawConversation): Conversation {
   };
 }
 
-export type InboxFilter = "all" | "mine" | "unread" | "pending";
+export type InboxFilter = "all" | "mine" | "unread" | "pending" | "closed";
 
 export function applyInboxFilter(
   conversations: Conversation[],
@@ -32,6 +32,7 @@ export function applyInboxFilter(
   if (filter === "unread") result = result.filter((c) => c.unread_count > 0);
   if (filter === "mine") result = result.filter((c) => !!userId && c.assigned_agent_id === userId);
   if (filter === "pending") result = result.filter((c) => c.status === "pending");
+  if (filter === "closed") result = result.filter((c) => c.status === "closed");
   const q = search.trim().toLowerCase();
   if (q) {
     result = result.filter((c) => {
