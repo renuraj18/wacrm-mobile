@@ -1,6 +1,7 @@
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Composer, type MediaSend } from "@/components/Composer";
@@ -269,11 +270,10 @@ export default function Chat() {
           ),
         }}
       />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
-      >
+      {/* react-native-keyboard-controller works on both platforms even with
+          Android edge-to-edge (the default in SDK 58), where the RN
+          KeyboardAvoidingView and softwareKeyboardLayoutMode "resize" don't. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {loading ? (
           <ActivityIndicator style={styles.loader} color={theme.primary} />
         ) : (

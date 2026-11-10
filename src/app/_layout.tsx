@@ -1,6 +1,7 @@
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -50,12 +51,14 @@ function RootStack() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <InboxRoot>
-          <StatusBar style="auto" />
-          <RootStack />
-        </InboxRoot>
-      </AuthProvider>
+      <KeyboardProvider>
+        <AuthProvider>
+          <InboxRoot>
+            <StatusBar style="auto" />
+            <RootStack />
+          </InboxRoot>
+        </AuthProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }
