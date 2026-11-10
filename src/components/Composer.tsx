@@ -8,19 +8,22 @@ import {
 } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { useRef, useState } from "react";
-import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { api, ApiError } from "@/lib/api";
 import { MEDIA_MAX_BYTES_BY_KIND, mimeForFile } from "@/lib/media-path";
 import { productCaption } from "@/lib/products";
 import { useTheme } from "@/lib/theme";
-import type { MessageTemplate, ProductListItem } from "@/lib/types";
+import type { Message, MessageTemplate, ProductListItem } from "@/lib/types";
 import { uploadChatMedia } from "@/lib/upload";
 
+import { AttachSheet, type AttachKind } from "./AttachSheet";
 import { ProductPicker } from "./ProductPicker";
 import { QuickReplyPicker } from "./QuickReplyPicker";
+import { ReplyBar } from "./ReplyBar";
 import { TemplatePicker, type TemplateValues } from "./TemplatePicker";
+import { Icon } from "./ui/Icon";
 
 export interface MediaSend {
   kind: "image" | "audio" | "video" | "document";
@@ -37,24 +40,69 @@ interface Props {
   onSendText: (text: string) => void;
   onSendMedia: (m: MediaSend) => void;
   onSendTemplate: (t: MessageTemplate, v: TemplateValues) => void;
+  /** Message being replied to (shown above the input), if any. */
+  replyTo: { message: Message; peerName: string } | null;
+  onCancelReply: () => void;
 }
 
 const MIN_RECORDING_MS = 800;
 const MAX_RECORDING_MS = 5 * 60 * 1000;
+/** Drag the mic this far left to cancel a voice note. */
+const CANCEL_DRAG_PX = 80;
 
 function alertError(title: string, e: unknown) {
   Alert.alert(title, e instanceof Error ? e.message : String(e));
 }
 
-export function Composer({
+export function Composer(props: Props) {
+  const theme = useTheme();
+  if (props.readOnly) {
+    return (
+      <View style={[styles.notice, { backgroundColor: theme.surface }]}>
+        <Text style={{ color: theme.muted, textAlign: "center" }}>You have view-only access to this inbox.</Text>
+      </View>
+    );
+  }
+  if (props.sessionExpired) {
+    return <ExpiredNotice sessionLabel={props.sessionLabel} onSendTemplate={props.onSendTemplate} />;
+  }
+  return <ActiveComposer {...props} />;
+}
+
+function ExpiredNotice({ sessionLabel, onSendTemplate }: Pick<Props, "sessionLabel" | "onSendTemplate">) {
+  const theme = useTheme();
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  return (
+    <View style={[styles.notice, { backgroundColor: theme.warnBg }]}>
+      <Text style={{ color: theme.warn, textAlign: "center" }}>
+        The 24-hour reply window has closed ({sessionLabel.toLowerCase()}). WhatsApp only allows approved templates now.
+      </Text>
+      <Pressable style={[styles.templateBtn, { backgroundColor: theme.primary }]} onPress={() => setTemplatesOpen(true)}>
+        <Text style={styles.templateBtnText}>Send a template</Text>
+      </Pressable>
+      {templatesOpen && (
+        <TemplatePicker
+          visible
+          onClose={() => setTemplatesOpen(false)}
+          onSend={(t, v) => {
+            setTemplatesOpen(false);
+            onSendTemplate(t, v);
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function ActiveComposer({
   conversationId,
   accountId,
-  readOnly,
-  sessionExpired,
   sessionLabel,
   onSendText,
   onSendMedia,
   onSendTemplate,
+  replyTo,
+  onCancelReply,
 }: Props) {
   const theme = useTheme();
   const [text, setText] = useState("");
@@ -62,6 +110,8 @@ export function Composer({
   const [productsOpen, setProductsOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [willCancel, setWillCancel] = useState(false);
   const [staged, setStaged] = useState<{
     uri: string;
     name: string;
@@ -73,14 +123,7 @@ export function Composer({
   const recState = useAudioRecorderState(recorder, 200);
   const recordingRef = useRef(false);
   const releasedRef = useRef(false);
-
-  if (readOnly) {
-    return (
-      <View style={[styles.notice, { backgroundColor: theme.surface }]}>
-        <Text style={{ color: theme.muted, textAlign: "center" }}>You have view-only access to this inbox.</Text>
-      </View>
-    );
-  }
+  const cancelRef = useRef(false);
 
   const sendText = () => {
     const t = text.trim();
@@ -105,6 +148,21 @@ export function Composer({
     }
   };
 
+  const stageMedia = (file: {
+    uri: string;
+    name: string;
+    mime: string;
+    kind: "image" | "video" | "document";
+    size?: number | null;
+  }) => {
+    const maxBytes = MEDIA_MAX_BYTES_BY_KIND[file.kind];
+    if (file.size && file.size > maxBytes) {
+      Alert.alert("File too large", `This ${file.kind} must be ${Math.floor(maxBytes / (1024 * 1024))} MB or smaller.`);
+      return;
+    }
+    setStaged({ uri: file.uri, name: file.name, mime: file.mime, kind: file.kind });
+  };
+
   const pickImage = async (source: "camera" | "library") => {
     const perm =
       source === "camera"
@@ -123,21 +181,6 @@ export function Composer({
     const name = a.fileName?.replace(/\.(heic|heif)$/i, ".jpg") || "photo.jpg";
     const mime = a.mimeType && a.mimeType !== "image/heic" ? a.mimeType : mimeForFile(name, "image/jpeg");
     stageMedia({ uri: a.uri, name, mime, kind: "image", size: a.fileSize });
-  };
-
-  const stageMedia = (file: {
-    uri: string;
-    name: string;
-    mime: string;
-    kind: "image" | "video" | "document";
-    size?: number | null;
-  }) => {
-    const maxBytes = MEDIA_MAX_BYTES_BY_KIND[file.kind];
-    if (file.size && file.size > maxBytes) {
-      Alert.alert("File too large", `This ${file.kind} must be ${Math.floor(maxBytes / (1024 * 1024))} MB or smaller.`);
-      return;
-    }
-    setStaged({ uri: file.uri, name: file.name, mime: file.mime, kind: file.kind });
   };
 
   const pickVideo = async () => {
@@ -187,24 +230,14 @@ export function Composer({
     }
   };
 
-  const openAttach = () => {
-    const options = ["Camera", "Photo library", "Video", "Document", "Shopify product", "Template", "Cancel"];
-    const run = (i: number) => {
-      if (i === 0) void pickImage("camera");
-      if (i === 1) void pickImage("library");
-      if (i === 2) void pickVideo();
-      if (i === 3) void pickDocument();
-      if (i === 4) setProductsOpen(true);
-      if (i === 5) setTemplatesOpen(true);
-    };
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions({ options, cancelButtonIndex: 6 }, run);
-    } else {
-      Alert.alert("Attach", undefined, [
-        ...options.slice(0, 6).map((o, i) => ({ text: o, onPress: () => run(i) })),
-        { text: "Cancel", style: "cancel" as const },
-      ]);
-    }
+  const onAttach = (kind: AttachKind) => {
+    if (kind === "camera") void pickImage("camera");
+    else if (kind === "gallery") void pickImage("library");
+    else if (kind === "video") void pickVideo();
+    else if (kind === "document") void pickDocument();
+    else if (kind === "product") setProductsOpen(true);
+    else if (kind === "template") setTemplatesOpen(true);
+    else void draftWithAi();
   };
 
   const pickProduct = (p: ProductListItem) => {
@@ -214,7 +247,7 @@ export function Composer({
     else onSendText(caption);
   };
 
-  // ---- Voice notes: press and hold the mic, release to send ----------
+  // ---- Voice notes: hold the mic, release to send, drag left to cancel ----
   const startRecording = async () => {
     releasedRef.current = false;
     const perm = await requestRecordingPermissionsAsync();
@@ -230,7 +263,7 @@ export function Composer({
       recorder.record({ forDuration: MAX_RECORDING_MS / 1000 });
       recordingRef.current = true;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      if (releasedRef.current) void stopRecording();
+      if (releasedRef.current) void stopRecording(cancelRef.current);
     } catch (e) {
       alertError("Couldn't start recording", e);
     }
@@ -256,96 +289,150 @@ export function Composer({
     }
   };
 
-  if (sessionExpired) {
-    return (
-      <View style={[styles.notice, { backgroundColor: theme.warnBg }]}>
-        <Text style={{ color: theme.warn, textAlign: "center" }}>
-          The 24-hour reply window has closed ({sessionLabel.toLowerCase()}). WhatsApp only allows approved templates now.
-        </Text>
-        <Pressable style={[styles.templateBtn, { backgroundColor: theme.primary }]} onPress={() => setTemplatesOpen(true)}>
-          <Text style={styles.templateBtnText}>Send a template</Text>
-        </Pressable>
-        {templatesOpen && <TemplatePicker
-          visible
-          onClose={() => setTemplatesOpen(false)}
-          onSend={(t, v) => {
-            setTemplatesOpen(false);
-            onSendTemplate(t, v);
-          }}
-        />}
-      </View>
-    );
-  }
+  // The PanResponder is created once; it calls the latest recording handlers through this ref.
+  const recordingActions = useRef({ start: startRecording, stop: stopRecording });
+  useEffect(() => {
+    recordingActions.current = { start: startRecording, stop: stopRecording };
+  });
+  // The callbacks below only touch the ref when a touch event fires, never while rendering.
+  // eslint-disable-next-line react-hooks/refs
+  const [pan] = useState(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        cancelRef.current = false;
+        setWillCancel(false);
+        void recordingActions.current.start();
+      },
+      onPanResponderMove: (_e, g) => {
+        const cancel = g.dx < -CANCEL_DRAG_PX;
+        if (cancel !== cancelRef.current) {
+          cancelRef.current = cancel;
+          setWillCancel(cancel);
+          if (cancel) void Haptics.selectionAsync();
+        }
+      },
+      onPanResponderRelease: () => {
+        void recordingActions.current.stop(cancelRef.current);
+        setWillCancel(false);
+      },
+      // If the system steals the touch, drop the note rather than send it by accident.
+      onPanResponderTerminate: () => {
+        cancelRef.current = true;
+        void recordingActions.current.stop(true);
+        setWillCancel(false);
+      },
+    }),
+  );
 
   const recording = recState.isRecording;
   const seconds = Math.floor((recState.durationMillis ?? 0) / 1000);
+  const hasContent = !!text.trim() || !!staged;
 
   return (
-    <View style={[styles.wrap, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+    <View style={[styles.wrap, { backgroundColor: theme.chatBg }]}>
       {sessionLabel ? <Text style={[styles.window, { color: theme.muted }]}>Reply window: {sessionLabel}</Text> : null}
+      {replyTo && <ReplyBar message={replyTo.message} peerName={replyTo.peerName} onCancel={onCancelReply} />}
       {staged && (
         <View style={[styles.staged, { backgroundColor: theme.bg }]}>
+          <Icon
+            name={staged.kind === "image" ? "image" : staged.kind === "video" ? "videocam" : "document-text"}
+            size={20}
+            color={theme.muted}
+          />
           <Text style={{ color: theme.text, flex: 1 }} numberOfLines={1}>
-            {staged.kind === "image" ? "📷" : staged.kind === "video" ? "🎥" : "📄"} {staged.name}
+            {staged.name}
           </Text>
-          <Pressable onPress={() => setStaged(null)} hitSlop={8}>
-            <Text style={{ color: theme.danger }}>Remove</Text>
+          <Pressable onPress={() => setStaged(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove attachment">
+            <Icon name="close-circle" size={22} color={theme.muted} />
           </Pressable>
         </View>
       )}
       <View style={styles.row}>
-        <Pressable
-          onPress={() => setQuickRepliesOpen(true)}
-          style={styles.icon}
-          hitSlop={6}
-          accessibilityLabel="Quick replies"
-        >
-          <Text style={[styles.quickReplyIcon, { color: theme.primary }]}>⚡</Text>
-        </Pressable>
-        <Pressable onPress={openAttach} style={styles.icon} hitSlop={6} accessibilityLabel="Attach" disabled={recording}>
-          <Text style={[styles.iconText, { color: theme.muted }]}>＋</Text>
-        </Pressable>
-        <Pressable onPress={draftWithAi} style={styles.icon} hitSlop={6} accessibilityLabel="Draft reply with AI" disabled={!!busy}>
-          {busy === "ai" ? <ActivityIndicator color={theme.primary} /> : <Text style={[styles.ai, { color: theme.primary }]}>AI</Text>}
-        </Pressable>
-        {recording ? (
-          <View style={[styles.input, styles.recBox, { backgroundColor: theme.bg }]}>
-            <Text style={{ color: theme.danger }}>● Recording {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</Text>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>Release to send</Text>
-          </View>
-        ) : (
-          <TextInput
-            style={[styles.input, { backgroundColor: theme.bg, color: theme.text }]}
-            placeholder={staged ? "Add a caption" : "Message"}
-            placeholderTextColor={theme.muted}
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={staged ? 1024 : 4096}
-            accessibilityLabel="Message"
-          />
-        )}
+        <View style={[styles.pill, { backgroundColor: theme.bg }]}>
+          {recording ? (
+            <View style={styles.recording}>
+              <Icon name="mic" size={20} color={theme.danger} />
+              <Text style={{ color: theme.text, fontVariant: ["tabular-nums"] }}>
+                {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+              </Text>
+              <Text style={{ color: willCancel ? theme.danger : theme.muted, flex: 1, textAlign: "center" }}>
+                {willCancel ? "Release to cancel" : "‹  Slide to cancel"}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Pressable
+                onPress={() => setAttachOpen(true)}
+                style={styles.pillIcon}
+                hitSlop={6}
+                accessibilityLabel="Attach"
+                disabled={!!busy}
+              >
+                {busy === "ai" ? (
+                  <ActivityIndicator color={theme.primary} />
+                ) : (
+                  <Icon name="attach" size={26} color={theme.muted} />
+                )}
+              </Pressable>
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder={staged ? "Add a caption" : "Message"}
+                placeholderTextColor={theme.muted}
+                value={text}
+                onChangeText={setText}
+                multiline
+                maxLength={staged ? 1024 : 4096}
+                accessibilityLabel="Message"
+              />
+              <Pressable
+                onPress={() => setQuickRepliesOpen(true)}
+                style={styles.pillIcon}
+                hitSlop={6}
+                accessibilityLabel="Quick replies"
+              >
+                <Icon name="flash" size={22} color={theme.primary} />
+              </Pressable>
+              {!hasContent && (
+                <Pressable
+                  onPress={() => void pickImage("camera")}
+                  style={styles.pillIcon}
+                  hitSlop={6}
+                  accessibilityLabel="Take a photo"
+                >
+                  <Icon name="camera" size={24} color={theme.muted} />
+                </Pressable>
+              )}
+            </>
+          )}
+        </View>
         {busy === "upload" ? (
           <ActivityIndicator style={styles.send} color={theme.primary} />
-        ) : text.trim() || staged ? (
+        ) : hasContent ? (
           <Pressable
             onPress={staged ? sendStaged : sendText}
             style={[styles.send, { backgroundColor: theme.primary }]}
             accessibilityLabel="Send"
           >
-            <Text style={styles.sendIcon}>➤</Text>
+            <Icon name="send" size={22} color="#fff" />
           </Pressable>
         ) : (
-          <Pressable
-            onPressIn={startRecording}
-            onPressOut={() => void stopRecording()}
-            style={[styles.send, { backgroundColor: recording ? theme.danger : theme.primary }]}
+          <View
+            {...pan.panHandlers}
+            style={[
+              styles.send,
+              recording && styles.sendRecording,
+              { backgroundColor: recording ? (willCancel ? theme.muted : theme.danger) : theme.primary },
+            ]}
+            accessibilityRole="button"
             accessibilityLabel="Hold to record a voice note"
           >
-            <Text style={styles.sendIcon}>🎤</Text>
-          </Pressable>
+            <Icon name="mic" size={24} color="#fff" />
+          </View>
         )}
       </View>
+      <AttachSheet visible={attachOpen} onClose={() => setAttachOpen(false)} onSelect={onAttach} />
       {quickRepliesOpen && (
         <QuickReplyPicker
           visible
@@ -372,18 +459,16 @@ export function Composer({
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth, gap: 6 },
+  wrap: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8, gap: 6 },
   window: { fontSize: 11, textAlign: "center" },
   row: { flexDirection: "row", alignItems: "flex-end", gap: 6 },
-  icon: { width: 36, height: 40, alignItems: "center", justifyContent: "center" },
-  iconText: { fontSize: 26 },
-  quickReplyIcon: { fontSize: 20 },
-  ai: { fontSize: 15, fontWeight: "800" },
-  input: { flex: 1, borderRadius: 20, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, fontSize: 16, maxHeight: 140, minHeight: 40 },
-  recBox: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  send: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  sendIcon: { color: "#fff", fontSize: 18 },
-  staged: { flexDirection: "row", gap: 8, padding: 8, borderRadius: 8, alignItems: "center" },
+  pill: { flex: 1, flexDirection: "row", alignItems: "flex-end", borderRadius: 24, paddingHorizontal: 6, minHeight: 48 },
+  pillIcon: { width: 38, height: 48, alignItems: "center", justifyContent: "center" },
+  input: { flex: 1, fontSize: 16, maxHeight: 140, paddingTop: 13, paddingBottom: 13, paddingHorizontal: 2 },
+  recording: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, height: 48, paddingHorizontal: 8 },
+  send: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
+  sendRecording: { transform: [{ scale: 1.25 }] },
+  staged: { flexDirection: "row", gap: 8, padding: 10, borderRadius: 12, alignItems: "center" },
   notice: { padding: 14, gap: 10 },
   templateBtn: { borderRadius: 10, paddingVertical: 12, alignItems: "center" },
   templateBtnText: { color: "#fff", fontWeight: "600" },

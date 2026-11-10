@@ -120,3 +120,16 @@ export interface ProductListItem {
   tracks_inventory: boolean;
   online_url: string | null;
 }
+
+export type ReactionActor = "customer" | "agent";
+
+/** Row of `message_reactions` (wacrm migration 009). */
+export interface MessageReaction {
+  id: string;
+  message_id: string;
+  conversation_id: string;
+  actor_type: ReactionActor;
+  actor_id?: string | null;
+  emoji: string;
+  created_at: string;
+}
