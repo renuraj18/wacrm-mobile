@@ -5,6 +5,7 @@ import {
   Alert,
   FlatList,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +13,9 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useAndroidKeyboardHeight } from "@/hooks/use-android-keyboard-height";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChatHeaderTitle } from "@/components/ChatHeaderTitle";
@@ -54,6 +57,11 @@ export default function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const androidKb = useAndroidKeyboardHeight();
+  const { height: kbHeight, progress: kbProgress } = useReanimatedKeyboardAnimation();
+  // Lift the whole chat above the keyboard, following its animation frame by frame.
+  const liftStyle = useAnimatedStyle(() => ({ paddingBottom: Math.max(0, -kbHeight.value) }));
+  const composerInsetStyle = useAnimatedStyle(() => ({ paddingBottom: insets.bottom * (1 - kbProgress.value) }));
   const { profile, canSend, session: auth } = useAuth();
   const myUserId = auth?.user.id;
   const { conversations, setActiveId, ensure } = useInbox();
@@ -396,12 +404,11 @@ export default function Chat() {
           ),
         }}
       />
-      {/* react-native-keyboard-controller works on both platforms even with
-          Android edge-to-edge (the default in SDK 58), where the RN
-          KeyboardAvoidingView and softwareKeyboardLayoutMode "resize" don't.
-          automaticOffset measures the view's place under the Stack header,
-          so the keyboard overlap is computed in window coordinates. */}
-      <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
+      {/* Android edge-to-edge never resizes the window, and KeyboardAvoidingView's
+          offset measuring proved unreliable under the Stack header. The keyboard
+          height is in window coordinates and this view ends at the window
+          bottom, so pad by it directly (the nav-bar inset is inside it). */}
+      <Animated.View style={[styles.flex, liftStyle, Platform.OS === "android" && { paddingBottom: androidKb }]}>
         {loading ? (
           <ActivityIndicator style={styles.loader} color={theme.primary} />
         ) : (
@@ -467,7 +474,7 @@ export default function Chat() {
             <Icon name="chevron-down" size={24} color={theme.muted} />
           </Pressable>
         )}
-        <View style={{ paddingBottom: insets.bottom }}>
+        <Animated.View style={[composerInsetStyle, Platform.OS === "android" && { paddingBottom: androidKb ? 0 : insets.bottom }]}>
           {id && (
             <Composer
               conversationId={id}
@@ -483,8 +490,8 @@ export default function Chat() {
               onCancelReply={() => setReplyTo(null)}
             />
           )}
-        </View>
-      </KeyboardAvoidingView>
+        </Animated.View>
+      </Animated.View>
       <MessageMenu
         message={menuMessage}
         myEmoji={menuMine}
