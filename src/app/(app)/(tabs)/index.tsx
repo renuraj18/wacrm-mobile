@@ -83,7 +83,6 @@ export default function Chats() {
     [canSend, toggle],
   );
 
-  const onAction = useCallback((conv: Conversation, action: RowAction) => void run([conv], action), [run]);
 
   const selectedConversations = useMemo(() => conversations.filter((c) => selected.has(c.id)), [conversations, selected]);
   const bulk = async (action: RowAction) => {
@@ -190,11 +189,8 @@ export default function Chats() {
               conv={item}
               myId={myId}
               selected={selected.has(item.id)}
-              selecting={selecting}
-              canAct={canSend}
               onPress={onPress}
               onLongPress={onLongPress}
-              onAction={onAction}
             />
           )}
           refreshing={refreshing}

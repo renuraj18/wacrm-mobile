@@ -415,8 +415,6 @@ export default function Chat() {
           <FlatList
             ref={listRef}
             inverted
-            // Shorter glide after a fling, closer to WhatsApp's chat scroll.
-            decelerationRate={0.985}
             data={rows}
             keyExtractor={(r) => (r.type === "msg" ? r.m.id : r.key)}
             renderItem={({ item }) =>
