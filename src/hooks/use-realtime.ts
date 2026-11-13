@@ -7,7 +7,7 @@ type Row = Record<string, unknown>;
 export type ChangeHandler = (payload: RealtimePostgresChangesPayload<Row>) => void;
 
 interface Subscription {
-  table: "messages" | "conversations";
+  table: "messages" | "conversations" | "message_reactions";
   filter?: string;
   onChange: ChangeHandler;
 }
